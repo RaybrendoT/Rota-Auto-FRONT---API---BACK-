@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dashboard - Rotas & Usuários</title>
+
+  <!-- Bootstrap + Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet"/>
+
+  <!-- Leaflet + MarkerCluster -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"/>
+
+  <style>
+    :root{
+      --map-height: 70vh; /* ajuste conforme quiser */
+      --dashboard-height: calc(100vh - var(--map-height));
+    }
+    html,body{height:100%;margin:0;}
+    body{font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;}
+
+    /* Header */
+    .app-header { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1rem; }
+    .app-title { display:flex; gap:.75rem; align-items:center; }
+
+    /* Map */
+    #map { width:100%; height:60vh; }
+    #dashboard { height:40vh; overflow:auto; background:var(--bs-body-bg); }
+   #divider {
+      height: 8px;
+      background: var(--bs-body-bg);
+      border-top: 2px solid var(--bs-border-color);
+      border-bottom: 2px solid var(--bs-border-color);
+      cursor: row-resize;
+    }
+    #divider:hover {
+    background: var(--bs-primary); /* destaque ao passar o mouse */
+    }
+    /* Cards area */
+    .filters .form-control, .filters .form-select { background: rgba(255,255,255,0.03); color: inherit; border: 1px solid rgba(255,255,255,0.06); }
+    .small-muted { color: rgba(255,255,255,0.6); font-size: .85rem; }
+
+    /* cluster badge tweak for dark */
+    .leaflet-marker-icon div { color: #fff; font-weight:600; }
+
+    /* responsive */
+    @media (max-width: 768px) {
+      :root { --map-height: 60vh; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="app-header">
+
+    <div class="app-title ms-3">
+      <a class="btn btn-outline-light btn-sm me-2" href="index.html" title="Voltar">
+        <i class="bi bi-arrow-left"></i>
+      </a>
+      <h3 class="m-0">Rota Auto — Dashboard</h3>
+      <small class="small-muted ms-2">Manaus</small>
+    </div>
+
+    <div class="me-3 d-flex gap-2 align-items-center">
+      <button id="themeToggle" class="btn btn-sm btn-outline-light" title="Alternar tema">
+        <i class="bi bi-moon-stars-fill"></i>
+      </button>
+      <button id="btnFitAll" class="btn btn-sm btn-outline-light" title="Ajustar mapa">
+        <i class="bi bi-fullscreen"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAP -->
+  <div id="map"></div>
+   <!-- DIVISOR -->
+  <div id="divider"></div>
+  <!-- DASHBOARD -->
+  <div id="dashboard" class="container-fluid">
+    <div class="row g-3">
+      <!-- Left: filtros -->
+      <div class="col-lg-4">
+        <div class="card bg-dark text-light shadow-sm">
+          <div class="card-body">
+            <h6 class="card-title">Controles & Filtros</h6>
+            <div class="filters mt-2">
+              <div class="mb-2">
+                <label class="small-muted">Busca por nome</label>
+                <input id="searchName" class="form-control form-control-sm" placeholder="Pesquisar usuário..." />
+              </div>
+
+              <div class="mb-2">
+                <label class="small-muted">Status</label>
+                <select id="filterStatus" class="form-select form-select-sm">
+                  <option value="">Todos</option>
+                  <option>Ativo</option>
+                  <option>Em Viagem</option>
+                  <option>Em Espera</option>
+                  <option>Offline</option>
+                </select>
+              </div>
+
+              <div class="mb-2">
+                <label class="small-muted">Rota vinculada</label>
+                <select id="filterRota" class="form-select form-select-sm">
+                  <option value="">Todas</option>
+                </select>
+              </div>
+
+              <div class="mb-3">
+                <label class="small-muted">Raio de agrupamento (m)</label>
+                <input id="clusterRadius" type="range" min="100" max="2000" step="50" value="500" class="form-range" />
+                <div class="d-flex justify-content-between small-muted">
+                  <span>100m</span><span id="clusterRadiusLabel">500 m</span><span>2000m</span>
+                </div>
+              </div>
+
+              <div class="mb-2 d-flex gap-2">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="toggleMarkers" checked>
+                  <label class="form-check-label small-muted" for="toggleMarkers">Mostrar Usuários</label>
+                </div>
+                <div class="form-check form-switch ms-auto">
+                  <input class="form-check-input" type="checkbox" id="toggleRotas" checked>
+                  <label class="form-check-label small-muted" for="toggleRotas">Mostrar Rotas</label>
+                </div>
+              </div>
+
+              <div class="d-grid mt-2">
+                <button id="btnApplyFilters" class="btn btn-sm btn-primary">Aplicar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Estatísticas -->
+        <div class="card bg-dark text-light shadow-sm mt-3">
+          <div class="card-body">
+            <h6 class="card-title">Resumo</h6>
+            <div class="row text-center mt-2">
+              <div class="col-4">
+                <div class="h5" id="statUsuarios">0</div>
+                <div class="small-muted">Usuários</div>
+              </div>
+              <div class="col-4">
+                <div class="h5" id="statRotas">0</div>
+                <div class="small-muted">Rotas</div>
+              </div>
+              <div class="col-4">
+                <div class="h5" id="statGrupos">0</div>
+                <div class="small-muted">Grupos (≤ raio)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right: lista e cards -->
+      <div class="col-lg-8">
+        <div class="row g-3">
+          <div class="col-12">
+            <div class="card bg-dark text-light shadow-sm">
+              <div class="card-body">
+                <h6 class="card-title">Rotas Ativas</h6>
+                <div id="rotasList" class="d-flex flex-wrap gap-2 mt-2"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="card bg-dark text-light shadow-sm">
+              <div class="card-body">
+                <h6 class="card-title">Usuários Filtrados</h6>
+                <div id="usuariosList" style="max-height:240px; overflow:auto" class="mt-2"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="card bg-dark text-light shadow-sm">
+              <div class="card-body">
+                <h6 class="card-title">Grupos por Proximidade</h6>
+                <div id="gruposList" class="mt-2"></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de detalhe usuário -->
+  <div class="modal fade" id="userModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content" id="userForm">
+        <div class="modal-header">
+          <h5 class="modal-title">Detalhes do Usuário</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="modalUserId" />
+          <div class="mb-2">
+            <label class="form-label small-muted">Nome</label>
+            <input id="modalUserName" class="form-control" />
+          </div>
+          <div class="mb-2">
+            <label class="form-label small-muted">Status</label>
+            <select id="modalUserStatus" class="form-select">
+              <option>Ativo</option>
+              <option>Em Viagem</option>
+              <option>Em Espera</option>
+              <option>Offline</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small-muted">Rota Vinculada</label>
+            <select id="modalUserRota" class="form-select"></select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small-muted">Latitude</label>
+            <input id="modalUserLat" class="form-control" />
+          </div>
+          <div class="mb-2">
+            <label class="form-label small-muted">Longitude</label>
+            <input id="modalUserLon" class="form-control" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Fechar</button>
+          <button class="btn btn-primary" type="submit">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+
+  <script>
+  /*****************************************************************
+   *  requisições fetch diretamente NA APPI *
+   *****************************************************************/
+ let usuarios = [];
+let rotas = [];
+
+async function loadUsuarios() {
+  try {
+    const res = await fetch("/api/usuarios");
+    if (!res.ok) throw new Error("Erro ao carregar usuários");
+    usuarios = await res.json();
+  } catch (e) {
+    console.error(e);
+    alert("Falha ao carregar usuários.");
+  }
+}
+
+async function loadRotas() {
+  try {
+    const res = await fetch("/api/rotas");
+    if (!res.ok) throw new Error("Erro ao carregar rotas");
+    rotas = await res.json();
+  } catch (e) {
+    console.error(e);
+    alert("Falha ao carregar rotas.");
+  }
+}
+
+
+  /****************************
+   *  Variáveis do mapa e UI  *
+   ****************************/
+  const map = L.map('map').setView([-3.119, -60.0217], 13);
+  const userIcon = L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/149/149071.png', iconSize:[34,34], iconAnchor:[17,34] });
+  let markerCluster = L.markerClusterGroup({ spiderfyOnMaxZoom:true, showCoverageOnHover:false });
+  let markersLayer = L.layerGroup();
+  let routesLayer = L.layerGroup();
+  let groupCircles = L.layerGroup();
+
+  // base tiles
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'&copy; OpenStreetMap' }).addTo(map);
+
+  // add initial layers
+  map.addLayer(routesLayer);
+  map.addLayer(markerCluster);
+  map.addLayer(groupCircles);
+
+  /***********************
+   *  Helper functions    *
+   ***********************/
+  function haversineDistance(lat1, lon1, lat2, lon2) {
+    // retorna distância em metros (fórmula haversine)
+    const toRad = v => v * Math.PI / 180;
+    const R = 6371000; // raio da Terra em metros
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
+
+  // cluster por proximidade simples: forma clusters iterativamente
+  function clusterByProximity(users, radiusMeters) {
+    const remaining = new Set(users.map(u=>u.id));
+    const clusters = [];
+    const idToUser = Object.fromEntries(users.map(u=>[u.id,u]));
+    while (remaining.size>0) {
+      const it = remaining.values();
+      const seedId = it.next().value;
+      remaining.delete(seedId);
+      const seed = idToUser[seedId];
+      const cluster = [seed];
+      // BFS-like: adicionar vizinhos dentro do raio
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (let id of Array.from(remaining)) {
+          const u = idToUser[id];
+          let near = false;
+          // se estiver perto de qualquer do cluster, adiciona
+          for (const c of cluster) {
+            if (haversineDistance(u.lat, u.lon, c.lat, c.lon) <= radiusMeters) {
+              near = true;
+              break;
+            }
+          }
+          if (near) {
+            cluster.push(u);
+            remaining.delete(id);
+            changed = true;
+          }
+        }
+      }
+      clusters.push(cluster);
+    }
+    return clusters;
+  }
+
+  /*******************************
+   *  Render rotas via OSRM (geojson) *
+   *******************************/
+  async function renderRotas() {
+    routesLayer.clearLayers();
+    if (!document.getElementById('toggleRotas').checked) return;
+    for (const r of rotas) {
+      try {
+        const [olat, olon] = r.origem;
+        const [dlat, dlon] = r.destino;
+        const url = `https://router.project-osrm.org/route/v1/driving/${olon},${olat};${dlon},${dlat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.routes && data.routes.length>0) {
+          const geo = data.routes[0].geometry;
+          const poly = L.geoJSON(geo, { color:'#1e90ff', weight:4, opacity:0.9 });
+          poly.addTo(routesLayer);
+          // add small label marker near origin
+          L.marker([olat, olon], { opacity:0.0 }).bindTooltip(r.nome, { permanent:true, direction:'right', className:'badge bg-primary text-light px-2 py-1' }).addTo(routesLayer);
+        }
+      } catch (e) { console.warn('OSRM erro',e); }
+    }
+  }
+
+  /*******************************
+   *  Render markers & clusters  *
+   *******************************/
+  function renderMarkers(filteredUsers) {
+    markerCluster.clearLayers();
+    markersLayer.clearLayers();
+    if (!document.getElementById('toggleMarkers').checked) return;
+
+    for (const u of filteredUsers) {
+      const m = L.marker([u.lat, u.lon], { icon: userIcon })
+        .bindPopup(`<b>${u.nome}</b><br>${u.status}<br><small>${u.rota||'-'}</small>`)
+        .on('click', ()=> openUserModal(u.id));
+      markerCluster.addLayer(m);
+      markersLayer.addLayer(m);
+    }
+    // ensure cluster layer is in map
+    if (!map.hasLayer(markerCluster)) map.addLayer(markerCluster);
+  }
+
+  /*******************************
+   *  Atualizar UI & listas      *
+   *******************************/
+  function populateRotaFilter() {
+    const sel = document.getElementById('filterRota');
+    sel.innerHTML = '<option value="">Todas</option>';
+    for (const r of rotas) {
+      const opt = document.createElement('option');
+      opt.value = r.nome; opt.textContent = r.nome;
+      sel.appendChild(opt);
+    }
+    // também para modal rota select
+    const modalSel = document.getElementById('modalUserRota');
+    modalSel.innerHTML = '<option value=""></option>';
+    for (const r of rotas) {
+      const opt = document.createElement('option');
+      opt.value = r.nome; opt.textContent = r.nome;
+      modalSel.appendChild(opt);
+    }
+  }
+
+  function updateLists(filteredUsers, clusters) {
+    document.getElementById('usuariosList').innerHTML = '';
+    filteredUsers.forEach(u=>{
+      const el = document.createElement('div');
+      el.className = 'd-flex justify-content-between align-items-center p-2 border-bottom';
+      el.innerHTML = `<div><strong>${u.nome}</strong><div class="small-muted">${u.status} • ${u.rota||'-'}</div></div>
+                      <div><button class="btn btn-sm btn-outline-light" onclick="centerOnUser(${u.id})"><i class="bi bi-geo-alt"></i></button></div>`;
+      document.getElementById('usuariosList').appendChild(el);
+    });
+
+    // rotas list
+    const rotasList = document.getElementById('rotasList');
+    rotasList.innerHTML = '';
+    for (const r of rotas) {
+      const card = document.createElement('div');
+      card.className = 'badge bg-secondary text-light p-2';
+      card.style.minWidth = '140px';
+      card.textContent = r.nome;
+      rotasList.appendChild(card);
+    }
+
+    // grupos list
+    const gl = document.getElementById('gruposList');
+    gl.innerHTML = '';
+    clusters.forEach((c, idx)=>{
+      const el = document.createElement('div');
+      el.className = 'p-2 border-bottom';
+      el.innerHTML = `<strong>Grupo ${idx+1}</strong> <div class="small-muted">${c.length} usuário(s)</div>
+                      <div class="mt-1">${c.map(u=>u.nome).join(', ')}</div>`;
+      gl.appendChild(el);
+    });
+
+    // stats
+    document.getElementById('statUsuarios').textContent = usuarios.length;
+    document.getElementById('statRotas').textContent = rotas.length;
+    document.getElementById('statGrupos').textContent = clusters.length;
+  }
+
+  /*******************************
+   *  Agrupar e desenhar grupos  *
+   *******************************/
+  function drawGroups(clusters, radiusMeters) {
+    groupCircles.clearLayers();
+    clusters.forEach(cluster=>{
+      if (cluster.length<=1) return; // opcional: só desenhar se >1
+      // centroid
+      const lat = cluster.reduce((s,u)=>s+u.lat,0)/cluster.length;
+      const lon = cluster.reduce((s,u)=>s+u.lon,0)/cluster.length;
+      const circle = L.circle([lat,lon], { radius: radiusMeters, color:'#ff9800', weight:2, fillOpacity:0.08 });
+      circle.addTo(groupCircles);
+      L.marker([lat,lon], { opacity:0.0 }).bindTooltip(`${cluster.length} usuários`, { permanent:true, direction:'center', className:'badge bg-warning text-dark px-2 py-1' }).addTo(groupCircles);
+    });
+  }
+
+  /*******************************
+   *  Aplicar filtros (principal) *
+   *******************************/
+  function applyFilters() {
+    const name = document.getElementById('searchName').value.trim().toLowerCase();
+    const status = document.getElementById('filterStatus').value;
+    const rota = document.getElementById('filterRota').value;
+    const radius = parseInt(document.getElementById('clusterRadius').value,10);
+
+    // filtrar usuários
+    let filtered = usuarios.filter(u=>{
+      if (name && !u.nome.toLowerCase().includes(name)) return false;
+      if (status && u.status !== status) return false;
+      if (rota && u.rota !== rota) return false;
+      return true;
+    });
+
+    // atualizar markers
+    renderMarkers(filtered);
+
+    // clusters por proximidade
+    const clusters = clusterByProximity(filtered, radius);
+    drawGroups(clusters, radius);
+    updateLists(filtered, clusters);
+  }
+
+  /*******************************
+   *  Eventos UI                 *
+   *******************************/
+  document.getElementById('clusterRadius').addEventListener('input', (e)=>{
+    document.getElementById('clusterRadiusLabel').textContent = e.target.value + ' m';
+  });
+
+  document.getElementById('btnApplyFilters').addEventListener('click', applyFilters);
+  document.getElementById('toggleMarkers').addEventListener('change', applyFilters);
+  document.getElementById('toggleRotas').addEventListener('change', async ()=>{
+    if (document.getElementById('toggleRotas').checked) await renderRotas();
+    else routesLayer.clearLayers();
+  });
+
+  document.getElementById('searchName').addEventListener('keypress', (e)=> { if (e.key==='Enter') applyFilters(); });
+
+  document.getElementById('themeToggle').addEventListener('click', ()=>{
+    const html = document.documentElement;
+    const cur = html.getAttribute('data-bs-theme') || 'dark';
+    const next = cur === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-bs-theme', next);
+    localStorage.setItem('tema', next);
+  });
+
+  document.getElementById('btnFitAll').addEventListener('click', ()=>{
+    const group = L.featureGroup();
+    markerCluster.eachLayer(l => group.addLayer(l));
+    routesLayer.eachLayer(l => group.addLayer(l));
+    if (group.getLayers().length>0) map.fitBounds(group.getBounds().pad(0.2));
+  });
+
+  // helper exposto para botões da lista
+  window.centerOnUser = function(userId){
+    const u = usuarios.find(x=>x.id===userId);
+    if (!u) return;
+    map.setView([u.lat,u.lon], 17);
+  };
+
+  /*******************************
+   *  Modal user edit/save       *
+   *******************************/
+  function openUserModal(userId) {
+    const u = usuarios.find(x=>x.id===userId);
+    if (!u) return;
+    document.getElementById('modalUserId').value = u.id;
+    document.getElementById('modalUserName').value = u.nome;
+    document.getElementById('modalUserStatus').value = u.status;
+    document.getElementById('modalUserRota').value = u.rota || '';
+    document.getElementById('modalUserLat').value = u.lat;
+    document.getElementById('modalUserLon').value = u.lon;
+    new bootstrap.Modal(document.getElementById('userModal')).show();
+  }
+  /*******************************
+   *  Salvando/Atualizando Usuários    *
+   *******************************/
+document.getElementById('userForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const id = document.getElementById('modalUserId').value;
+  const data = {
+    nome: document.getElementById('modalUserName').value,
+    status: document.getElementById('modalUserStatus').value,
+    latitude: parseFloat(document.getElementById('modalUserLat').value),
+    longitude: parseFloat(document.getElementById('modalUserLon').value),
+    rota: document.getElementById('modalUserRota').value
+  };
+
+  try {
+    const res = await fetch(`/api/usuarios/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error("Erro ao salvar usuário");
+    await loadUsuarios();
+    applyFilters();
+    bootstrap.Modal.getInstance(document.getElementById('userModal')).hide();
+  } catch (err) {
+    console.error(err);
+    alert("Falha ao salvar usuário.");
+  }
+});
+
+
+  /*******************************
+   *  Inicialização              *
+   *******************************/
+    (async function init(){
+      const tema = localStorage.getItem('tema');
+      if (tema) document.documentElement.setAttribute('data-bs-theme', tema);
+
+      await loadRotas();
+      await loadUsuarios();
+      populateRotaFilter();
+      await renderRotas();
+      applyFilters();
+      setTimeout(()=>document.getElementById('btnFitAll').click(), 800);
+    })();
+
+  const mapEl = document.getElementById("map");
+  const dashEl = document.getElementById("dashboard");
+  const divider = document.getElementById("divider");
+  let dragging = false;
+
+  divider.addEventListener("mousedown", ()=> dragging = true);
+  document.addEventListener("mouseup", ()=> dragging = false);
+  document.addEventListener("mousemove", e=>{
+    if (!dragging) return;
+    const totalHeight = window.innerHeight;
+    const newMapH = e.clientY;
+    const newDashH = totalHeight - newMapH - divider.offsetHeight;
+    if (newMapH > 100 && newDashH > 100) {
+      mapEl.style.height = newMapH+"px";
+      dashEl.style.height = newDashH+"px";
+      if (window.map) map.invalidateSize(); // Leaflet reajusta
+    }
+  });
+  </script>
+</body>
+</html>

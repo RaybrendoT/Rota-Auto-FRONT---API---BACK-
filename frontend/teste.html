@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Controle de Motoristas</title>
+
+  <!-- Fonts e CSS -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" />
+
+  <style>
+    body {
+      background-color: var(--bs-body-bg);
+      color: var(--bs-body-color);
+      font-family: 'Inter', sans-serif;
+    }
+    .dark-toggle {
+      cursor: pointer;
+      font-size: 1.25rem;
+      border: none;
+      background: transparent;
+      color: var(--bs-primary);
+    }
+  </style>
+</head>
+<body class="container py-5">
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between mb-4">
+    <h2 class="mb-4 text-primary fw-semibold">Controle de Motoristas</h2>
+    <div>
+      <span class="dark-toggle me-2"><i class="bi bi-moon-stars-fill"></i></span>
+      <button class="btn btn-outline-primary" onclick="window.location.href='index.html'">Voltar</button>
+    </div>
+  </div>
+
+  <!-- Botão -->
+  <button id="btnAddMotorista" class="btn btn-primary mb-3">Adicionar Motorista</button>
+
+  <!-- Tabela -->
+  <div class="table-responsive">
+    <table class="table table-bordered table-striped">
+      <thead class="table-light">
+        <tr>
+          <th>Telefone</th>
+          <th>Nome</th>
+          <th>Latitude</th>
+          <th>Longitude</th>
+          <th>Status</th>
+          <th>Check-in</th>
+          <th>Rota Vinculada</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaMotoristas"></tbody>
+    </table>
+  </div>
+
+  <!-- Modal de Motorista -->
+  <div class="modal fade" id="modalMotorista" tabindex="-1" aria-labelledby="modalMotoristaLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content needs-validation" id="formMotorista" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalMotoristaLabel">Adicionar Motorista</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="telefone" class="form-label">Telefone</label>
+            <input type="text" class="form-control" id="telefone" required />
+            <div class="invalid-feedback">Telefone é obrigatório.</div>
+          </div>
+          <div class="mb-3">
+            <label for="nome" class="form-label">Nome</label>
+            <input type="text" class="form-control" id="nome" required />
+            <div class="invalid-feedback">Nome é obrigatório.</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="latitude" class="form-label">Latitude</label>
+              <input type="number" class="form-control" id="latitude" />
+            </div>
+            <div class="col-md-6">
+              <label for="longitude" class="form-label">Longitude</label>
+              <input type="number" class="form-control" id="longitude" />
+            </div>
+          </div>
+          <div class="mt-3 mb-3">
+            <label for="status" class="form-label">Status</label>
+            <select class="form-select" id="status" required>
+              <option value="">Selecione status</option>
+              <option value="Normal">Normal</option>
+              <option value="Ausente">Ausente</option>
+              <option value="Desligado">Desligado</option>
+            </select>
+            <div class="invalid-feedback">Status é obrigatório.</div>
+          </div>
+          <div class="form-check mb-3">
+            <input type="checkbox" class="form-check-input" id="checkin" />
+            <label class="form-check-label" for="checkin">Check-in realizado</label>
+          </div>
+          <div class="mb-3">
+            <label for="rotaVinculada" class="form-label">Rota Vinculada</label>
+            <select class="form-select" id="rotaVinculada" required>
+              <option value="">Selecione a rota</option>
+            </select>
+            <div class="invalid-feedback">Selecione a rota vinculada.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Salvar</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const API_URL = "http://127.0.0.1:5000/api"; // ajuste se precisar
+    const tabela = document.getElementById("tabelaMotoristas");
+    const form = document.getElementById("formMotorista");
+    const modal = new bootstrap.Modal(document.getElementById("modalMotorista"));
+
+    let editandoTelefone = null;
+
+    // Dark Mode persistente
+    const toggleBtn = document.querySelector(".dark-toggle");
+    const html = document.documentElement;
+    const temaSalvo = localStorage.getItem("tema");
+    if (temaSalvo) html.setAttribute("data-bs-theme", temaSalvo);
+    toggleBtn.addEventListener("click", () => {
+      const atual = html.getAttribute("data-bs-theme");
+      const novo = atual === "dark" ? "light" : "dark";
+      html.setAttribute("data-bs-theme", novo);
+      localStorage.setItem("tema", novo);
+    });
+
+    // Carregar motoristas
+    async function carregarMotoristas() {
+      const res = await fetch(`${API_URL}/motoristas`);
+      const data = await res.json();
+      renderTabela(data);
+    }
+
+    // Carregar rotas para o select
+    async function carregarRotas() {
+      const res = await fetch(`${API_URL}/rotas`);
+      const rotas = await res.json();
+      const select = document.getElementById("rotaVinculada");
+      select.innerHTML = '<option value="">Selecione a rota</option>';
+      rotas.forEach(r => {
+        const opt = document.createElement("option");
+        opt.value = r.id;
+        opt.textContent = r.nome_rota;
+        select.appendChild(opt);
+      });
+    }
+
+    // Renderizar tabela
+    function renderTabela(motoristas) {
+      tabela.innerHTML = "";
+      motoristas.forEach(m => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${m.telefone}</td>
+          <td>${m.nome}</td>
+          <td>${m.latitude ?? ""}</td>
+          <td>${m.longitude ?? ""}</td>
+          <td>${m.status}</td>
+          <td>${m.checkin ? "Sim" : "Não"}</td>
+          <td>${m.rota ? m.rota.nome_rota : ""}</td>
+          <td>
+            <button class="btn btn-sm btn-warning me-1" onclick="editarMotorista('${m.telefone}')"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-danger" onclick="excluirMotorista('${m.telefone}')"><i class="bi bi-trash"></i></button>
+          </td>
+        `;
+        tabela.appendChild(row);
+      });
+    }
+
+    // Abrir modal para adicionar
+    document.getElementById("btnAddMotorista").addEventListener("click", () => {
+      form.reset();
+      form.classList.remove("was-validated");
+      editandoTelefone = null;
+      document.getElementById("modalMotoristaLabel").textContent = "Adicionar Motorista";
+      carregarRotas();
+      modal.show();
+    });
+
+    // Salvar (POST ou PUT)
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!form.checkValidity()) {
+        form.classList.add("was-validated");
+        return;
+      }
+      const motorista = {
+        telefone: document.getElementById("telefone").value,
+        nome: document.getElementById("nome").value,
+        latitude: document.getElementById("latitude").value || null,
+        longitude: document.getElementById("longitude").value || null,
+        status: document.getElementById("status").value,
+        checkin: document.getElementById("checkin").checked,
+        rota_id: document.getElementById("rotaVinculada").value || null
+      };
+
+      if (editandoTelefone) {
+        await fetch(`${API_URL}/motoristas/${editandoTelefone}`, {
+          method: "PUT",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(motorista)
+        });
+      } else {
+        await fetch(`${API_URL}/motoristas`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(motorista)
+        });
+      }
+
+      modal.hide();
+      carregarMotoristas();
+    });
+
+    // Editar
+    window.editarMotorista = async (telefone) => {
+      const res = await fetch(`${API_URL}/motoristas/${telefone}`);
+      const m = await res.json();
+      editandoTelefone = telefone;
+      document.getElementById("telefone").value = m.telefone;
+      document.getElementById("telefone").disabled = true;
+      document.getElementById("nome").value = m.nome;
+      document.getElementById("latitude").value = m.latitude ?? "";
+      document.getElementById("longitude").value = m.longitude ?? "";
+      document.getElementById("status").value = m.status;
+      document.getElementById("checkin").checked = m.checkin;
+      await carregarRotas();
+      document.getElementById("rotaVinculada").value = m.rota_id ?? "";
+      document.getElementById("modalMotoristaLabel").textContent = "Editar Motorista";
+      modal.show();
+    };
+
+    // Excluir
+    window.excluirMotorista = async (telefone) => {
+      if (confirm("Deseja realmente excluir este motorista?")) {
+        await fetch(`${API_URL}/motoristas/${telefone}`, {method: "DELETE"});
+        carregarMotoristas();
+      }
+    };
+
+    // Inicializar
+    carregarMotoristas();
+  </script>
+</body>
+</html>

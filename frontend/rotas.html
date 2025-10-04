@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Solicitar Rota</title>
+
+  <!-- Bootstrap + Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    #map {
+      width: 100%;
+      height: 300px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body class="container py-5">
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between mb-4">
+    <h2 class="mb-4 text-primary fw-semibold">Solicitar Rota</h2>
+    <div>
+      <span class="dark-toggle me-2" style="cursor:pointer;"><i class="bi bi-moon-stars-fill"></i></span>
+      <button class="btn btn-outline-primary" onclick="window.location.href='index.html'">Voltar</button>
+    </div>
+  </div>
+
+  <!-- Botão -->
+  <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#modalRota" id="btnNovaRota">
+    Nova Solicitação
+  </button>
+
+  <!-- Tabela -->
+  <div class="table-responsive">
+    <table class="table table-bordered table-striped">
+      <thead class="table-light">
+        <tr>
+          <th>Nome</th>
+          <th>Origem</th>
+          <th>Destino</th>
+          <th>Data</th>
+          <th>Hora</th>
+          <th>Distância (km)</th>
+          <th>Duração (min)</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaRotas"></tbody>
+    </table>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal fade" id="modalRota" tabindex="-1" aria-labelledby="modalRotaLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <form class="modal-content needs-validation" id="formRota" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalRotaLabel">Nova Solicitação de Rota</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="rotaIndex"/>
+
+          <div class="alert alert-info">
+            Clique no mapa para definir a <b>Origem</b> (primeiro clique) e o <b>Destino</b> (segundo clique).
+            Um terceiro clique vai resetar os pontos.
+          </div>
+
+          <div class="mb-3">
+            <label for="nome" class="form-label">Nome da Rota</label>
+                <input type="text" class="form-control" id="nome" required />
+            </select>
+            <div class="invalid-feedback">Escolha uma rota.</div>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="origem_lat" class="form-label">Origem - Latitude</label>
+              <input type="number" step="any" class="form-control" id="origem_lat" required />
+            </div>
+            <div class="col-md-6">
+              <label for="origem_lon" class="form-label">Origem - Longitude</label>
+              <input type="number" step="any" class="form-control" id="origem_lon" required />
+            </div>
+            <div class="col-md-6">
+              <label for="destino_lat" class="form-label">Destino - Latitude</label>
+              <input type="number" step="any" class="form-control" id="destino_lat" required />
+            </div>
+            <div class="col-md-6">
+              <label for="destino_lon" class="form-label">Destino - Longitude</label>
+              <input type="number" step="any" class="form-control" id="destino_lon" required />
+            </div>
+          </div>
+
+          <div id="map" class="mt-3"></div>
+
+          <div class="row g-3 mt-3">
+            <div class="col-md-6">
+              <label for="data" class="form-label">Data</label>
+              <input type="date" class="form-control" id="data" required />
+            </div>
+            <div class="col-md-6">
+              <label for="hora" class="form-label">Hora Planejada</label>
+              <input type="time" class="form-control" id="hora" required />
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Salvar</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    let rotas = [];
+    let map, origemMarker, destinoMarker, routeLine;
+    let distanciaKm = null, duracaoMin = null;
+    let clickStep = 0; // controla cliques no mapa
+
+    const form = document.getElementById("formRota");
+    const tabela = document.getElementById("tabelaRotas");
+    const modalEl = document.getElementById("modalRota");
+    const modal = new bootstrap.Modal(modalEl);
+
+    // Inicia mapa quando modal abrir
+    modalEl.addEventListener("shown.bs.modal", () => {
+      if (!map) {
+        map = L.map("map").setView([-3.119, -60.0217], 12); // Manaus
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Clique no mapa define origem/destino
+        map.on("click", (e) => {
+          const { lat, lng } = e.latlng;
+
+          if (clickStep === 0) {
+            document.getElementById("origem_lat").value = lat.toFixed(6);
+            document.getElementById("origem_lon").value = lng.toFixed(6);
+            clickStep = 1;
+          } else if (clickStep === 1) {
+            document.getElementById("destino_lat").value = lat.toFixed(6);
+            document.getElementById("destino_lon").value = lng.toFixed(6);
+            clickStep = 2;
+          } else {
+            // reset no terceiro clique
+            document.getElementById("origem_lat").value = "";
+            document.getElementById("origem_lon").value = "";
+            document.getElementById("destino_lat").value = "";
+            document.getElementById("destino_lon").value = "";
+            clickStep = 0;
+            if (origemMarker) map.removeLayer(origemMarker);
+            if (destinoMarker) map.removeLayer(destinoMarker);
+            if (routeLine) map.removeLayer(routeLine);
+            return;
+          }
+
+          atualizarMapa();
+        });
+      }
+      map.invalidateSize();
+    });
+
+    // Atualizar mapa ao mudar coordenadas
+    ["origem_lat","origem_lon","destino_lat","destino_lon"].forEach(id=>{
+      document.getElementById(id).addEventListener("input", atualizarMapa);
+    });
+
+    // Nova rota (reset form)
+    document.getElementById("btnNovaRota").addEventListener("click", () => {
+      document.getElementById("rotaIndex").value = "";
+      form.reset();
+      form.classList.remove("was-validated");
+      document.getElementById("modalRotaLabel").textContent = "Nova Solicitação de Rota";
+      clickStep = 0;
+      if (origemMarker) map.removeLayer(origemMarker);
+      if (destinoMarker) map.removeLayer(destinoMarker);
+      if (routeLine) map.removeLayer(routeLine);
+    });
+
+    // Salvar rota
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!form.checkValidity()) {
+        form.classList.add("was-validated");
+        return;
+      }
+
+      const olat = document.getElementById("origem_lat").value;
+      const olon = document.getElementById("origem_lon").value;
+      const dlat = document.getElementById("destino_lat").value;
+      const dlon = document.getElementById("destino_lon").value;
+
+      if (!olat || !olon || !dlat || !dlon) {
+        alert("Defina origem e destino clicando no mapa.");
+        return;
+      }
+
+      const rota = {
+        id: crypto.randomUUID(), // ou algum auto-incremento
+        nome: document.getElementById("nome").value,
+        origem: `${olat}, ${olon}`,
+        destino: `${dlat}, ${dlon}`,
+        data: document.getElementById("data").value,
+        hora: document.getElementById("hora").value,
+        distancia: distanciaKm ? distanciaKm.toFixed(2) : "-",
+        duracao: duracaoMin ? duracaoMin.toFixed(1) : "-"
+      };
+
+      const index = document.getElementById("rotaIndex").value;
+      if (index === "") {
+        rotas.push(rota);
+      } else {
+        rotas[index] = rota;
+      }
+
+      renderTabela();
+      modal.hide();
+    });
+
+    // Render tabela
+    function renderTabela() {
+      tabela.innerHTML = "";
+      rotas.forEach((rota, i) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${rota.nome}</td>
+          <td>${rota.origem}</td>
+          <td>${rota.destino}</td>
+          <td>${rota.data}</td>
+          <td>${rota.hora}</td>
+          <td>${rota.distancia}</td>
+          <td>${rota.duracao}</td>
+          <td>
+            <button class="btn btn-sm btn-warning me-1" onclick="editarRota(${i})">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-danger" onclick="excluirRota(${i})">
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        `;
+        tabela.appendChild(row);
+      });
+    }
+
+    // Editar
+    window.editarRota = (i) => {
+      const r = rotas[i];
+      document.getElementById("rotaIndex").value = i;
+      document.getElementById("nome").value = r.nome;
+      const [olat, olon] = r.origem.split(", ");
+      const [dlat, dlon] = r.destino.split(", ");
+      document.getElementById("origem_lat").value = olat;
+      document.getElementById("origem_lon").value = olon;
+      document.getElementById("destino_lat").value = dlat;
+      document.getElementById("destino_lon").value = dlon;
+      document.getElementById("data").value = r.data;
+      document.getElementById("hora").value = r.hora;
+
+      document.getElementById("modalRotaLabel").textContent = "Editar Rota";
+      modal.show();
+      atualizarMapa();
+    };
+
+    // Excluir
+    window.excluirRota = (i) => {
+      if (confirm("Deseja realmente excluir esta rota?")) {
+        rotas.splice(i, 1);
+        renderTabela();
+      }
+    };
+
+    // Função OSRM
+    async function atualizarMapa() {
+      const olat = parseFloat(document.getElementById("origem_lat").value);
+      const olon = parseFloat(document.getElementById("origem_lon").value);
+      const dlat = parseFloat(document.getElementById("destino_lat").value);
+      const dlon = parseFloat(document.getElementById("destino_lon").value);
+
+      if (!map || isNaN(olat) || isNaN(olon) || isNaN(dlat) || isNaN(dlon)) return;
+
+      if (origemMarker) map.removeLayer(origemMarker);
+      if (destinoMarker) map.removeLayer(destinoMarker);
+      if (routeLine) map.removeLayer(routeLine);
+
+      origemMarker = L.marker([olat, olon]).addTo(map).bindPopup("Origem").openPopup();
+      destinoMarker = L.marker([dlat, dlon]).addTo(map).bindPopup("Destino");
+
+      const url = `https://router.project-osrm.org/route/v1/driving/${olon},${olat};${dlon},${dlat}?overview=full&geometries=geojson`;
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          routeLine = L.geoJSON(route.geometry, { color: "blue", weight: 4 }).addTo(map);
+          map.fitBounds(routeLine.getBounds());
+
+          // Atualiza distância e duração
+          distanciaKm = route.distance / 1000; // metros → km
+          duracaoMin = route.duration / 60;   // segundos → minutos
+        }
+      } catch (err) {
+        console.error("Erro na API OSRM:", err);
+      }
+    }
+  </script>
+</body>
+</html>

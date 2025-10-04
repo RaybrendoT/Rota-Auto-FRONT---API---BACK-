@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Controle de Motoristas</title>
+
+  <!-- Fonts e CSS -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" />
+
+  <style>
+    body {
+      background-color: var(--bs-body-bg);
+      color: var(--bs-body-color);
+      font-family: 'Inter', sans-serif;
+    }
+    .dark-toggle {
+      cursor: pointer;
+      font-size: 1.25rem;
+      border: none;
+      background: transparent;
+      color: var(--bs-primary);
+    }
+    .small-muted { color: rgba(0,0,0,0.45); }
+    [data-bs-theme="dark"] .small-muted { color: rgba(255,255,255,0.6); }
+
+    .status-badge { text-transform: capitalize; }
+    .clickable { cursor: pointer; }
+  </style>
+</head>
+<body class="container py-5">
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between mb-4">
+    <h2 class="mb-4 text-primary fw-semibold">Controle de Motoristas</h2>
+    <div class="d-flex align-items-center gap-2">
+      <span class="dark-toggle me-2" id="themeToggle" title="Alternar tema" style="cursor:pointer;">
+        <i class="bi bi-moon-stars-fill"></i>
+      </span>
+      <button class="btn btn-outline-primary" onclick="window.location.href='index.html'">Voltar</button>
+    </div>
+  </div>
+
+  <!-- Botão -->
+  <div class="d-flex justify-content-between align-items-center mb-3 gap-2">
+    <button id="btnAddMotorista" class="btn btn-primary">Adicionar Motorista</button>
+    <div><small class="small-muted">Dados sincronizados com a API</small></div>
+  </div>
+
+  <!-- Tabela -->
+  <div class="table-responsive">
+    <table id="motoristasTable" class="table table-bordered table-striped">
+      <thead class="table-light">
+        <tr>
+          <th>Telefone</th>
+          <th>Nome</th>
+          <th>CNH</th>
+          <th>Latitude</th>
+          <th>Longitude</th>
+          <th>Status</th>
+          <th>Check-in</th>
+          <th>Rota Vinculada</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaMotoristas"></tbody>
+    </table>
+  </div>
+
+  <!-- Modal de Motorista (Create / Edit) -->
+  <div class="modal fade" id="modalMotorista" tabindex="-1" aria-labelledby="modalMotoristaLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content needs-validation" id="formMotorista" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalMotoristaLabel">Adicionar Motorista</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="motoristaId" />
+
+          <div class="mb-3">
+            <label for="telefone" class="form-label">Telefone</label>
+            <input type="text" class="form-control" id="telefone" required />
+            <div class="invalid-feedback">Telefone é obrigatório.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="nome" class="form-label">Nome</label>
+            <input type="text" class="form-control" id="nome" required />
+            <div class="invalid-feedback">Nome é obrigatório.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="cnh" class="form-label">CNH</label>
+            <input type="text" class="form-control" id="cnh" placeholder="Opcional, preencha se houver" />
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="latitude" class="form-label">Latitude</label>
+              <input type="number" step="any" class="form-control" id="latitude" />
+            </div>
+            <div class="col-md-6">
+              <label for="longitude" class="form-label">Longitude</label>
+              <input type="number" step="any" class="form-control" id="longitude" />
+            </div>
+          </div>
+
+          <div class="mt-3 mb-3">
+            <label for="status" class="form-label">Status</label>
+            <select class="form-select" id="status" required>
+              <option value="">Selecione status</option>
+              <option value="Normal">Normal</option>
+              <option value="Ausente">Ausente</option>
+              <option value="Desligado">Desligado</option>
+              <option value="Ativo">Ativo</option>
+              <option value="Em Viagem">Em Viagem</option>
+              <option value="Em Espera">Em Espera</option>
+              <option value="Offline">Offline</option>
+            </select>
+            <div class="invalid-feedback">Status é obrigatório.</div>
+          </div>
+          <div class="mb-3">
+            <label for="rotaVinculada" class="form-label">Rota Vinculada</label>
+            <select class="form-select" id="rotaVinculada">
+              <option value="">-- Sem vínculo --</option>
+            </select>
+            <div class="invalid-feedback">Selecione a rota vinculada (ou deixe em branco).</div>
+          </div>
+          <div class="form-check mb-3">
+            <input type="checkbox" class="form-check-input" id="checkin" />
+            <label class="form-check-label" for="checkin">Check-in realizado</label>
+          </div>
+
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary" id="saveBtn">Salvar</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toasts -->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index:1200">
+    <div id="toastContainer"></div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+  /*******************************
+   *  Config & Estado local       *
+   *******************************/
+  let motoristas = []; // vinda da API
+  let rotas = [];      // vinda da API
+  let editingId = null; // id quando em edição
+
+  const tabela = document.getElementById("tabelaMotoristas");
+  const form = document.getElementById("formMotorista");
+  const modalEl = document.getElementById("modalMotorista");
+  const modal = new bootstrap.Modal(modalEl);
+
+  // Theme
+  const toggleBtn = document.getElementById("themeToggle");
+  const html = document.documentElement;
+  const temaSalvo = localStorage.getItem("tema");
+  if (temaSalvo) html.setAttribute("data-bs-theme", temaSalvo);
+
+  toggleBtn.addEventListener("click", () => {
+    const atual = html.getAttribute("data-bs-theme") || "light";
+    const novo = atual === "dark" ? "light" : "dark";
+    html.setAttribute("data-bs-theme", novo);
+    localStorage.setItem("tema", novo);
+    // ajustar tabela para visual
+    applyTableTheme();
+  });
+
+  function applyTableTheme() {
+    const tbl = document.getElementById("motoristasTable");
+    if (!tbl) return;
+    if (html.getAttribute("data-bs-theme") === "dark") {
+      tbl.classList.remove("table-light");
+      tbl.classList.add("table-dark");
+    } else {
+      tbl.classList.remove("table-dark");
+      tbl.classList.add("table-light");
+    }
+  }
+
+  /*******************************
+   *  UI Helpers                 *
+   *******************************/
+  function showToast(message, type = "success", timeout = 3000) {
+    const id = "t" + Date.now();
+    const color = type === "success" ? "bg-success" : (type === "warning" ? "bg-warning text-dark" : "bg-danger");
+    const toastHtml = `
+      <div id="${id}" class="toast ${color} text-light border-0 mb-2" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+          <div class="toast-body">${message}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Fechar"></button>
+        </div>
+      </div>`;
+    const container = document.getElementById("toastContainer");
+    container.insertAdjacentHTML("beforeend", toastHtml);
+    const t = new bootstrap.Toast(document.getElementById(id), { delay: timeout });
+    t.show();
+    // remove after hidden
+    document.getElementById(id).addEventListener('hidden.bs.toast', ()=> document.getElementById(id)?.remove());
+  }
+
+  function mapStatusToBadge(status) {
+    const s = (status || "").toLowerCase();
+    if (s.includes("ativo") || s.includes("normal")) return 'badge bg-success status-badge';
+    if (s.includes("viagem") || s.includes("em viagem")) return 'badge bg-info status-badge';
+    if (s.includes("espera") || s.includes("em espera")) return 'badge bg-warning text-dark status-badge';
+    if (s.includes("ausente") || s.includes("desligado")) return 'badge bg-secondary status-badge';
+    if (s.includes("offline")) return 'badge bg-danger status-badge';
+    return 'badge bg-light text-dark status-badge';
+  }
+
+  /*******************************
+   *  Fetch API (backend)        *
+   *******************************/
+  async function fetchRotas() {
+    try {
+      const res = await fetch('/api/rotas');
+      if (!res.ok) throw new Error('Falha ao obter rotas');
+      rotas = await res.json();
+      populateRotaSelect();
+    } catch (err) {
+      console.error(err);
+      showToast('Erro ao carregar rotas', 'danger');
+      rotas = [];
+    }
+  }
+
+  async function fetchMotoristas() {
+    try {
+      const res = await fetch('/api/motoristas');
+      if (!res.ok) {
+        // fallback: talvez backend não tenha endpoint motoristas
+        throw new Error('Endpoint /api/motoristas indisponível');
+      }
+      motoristas = await res.json();
+      renderTabela();
+    } catch (err) {
+      console.warn(err);
+      showToast('Erro ao carregar motoristas (verifique API)', 'warning', 4000);
+      motoristas = [];
+      renderTabela(); // mostra vazio
+    }
+  }
+
+  async function createMotorista(payload) {
+    const res = await fetch('/api/motoristas', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(txt || 'Erro ao criar motorista');
+    }
+    return res.json();
+  }
+
+  async function updateMotorista(id, payload) {
+    const res = await fetch(`/api/motoristas/${id}`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(txt || 'Erro ao atualizar motorista');
+    }
+    return res.json();
+  }
+
+  async function deleteMotoristaAPI(id) {
+    const res = await fetch(`/api/motoristas/${id}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(txt || 'Erro ao deletar motorista');
+    }
+    return res.json();
+  }
+
+  /*******************************
+   *  Render tabela              *
+   *******************************/
+  function renderTabela() {
+    tabela.innerHTML = '';
+    // ensure table theme applied
+    applyTableTheme();
+
+    if (!motoristas || motoristas.length === 0) {
+      tabela.innerHTML = '<tr><td colspan="9" class="text-center small-muted">Nenhum motorista encontrado.</td></tr>';
+      return;
+    }
+
+    motoristas.forEach(m => {
+      // adapt fields (backend pode retornar rota como object ou rota_id)
+      const id = m.id ?? m.ID ?? null;
+      const telefone = m.telefone ?? m.phone ?? '-';
+      const nome = m.nome ?? m.name ?? '-';
+      const cnh = m.cnh ?? m.CNH ?? '-';
+      const lat = (m.latitude !== null && m.latitude !== undefined) ? m.latitude : (m.lat ?? '');
+      const lon = (m.longitude !== null && m.longitude !== undefined) ? m.longitude : (m.lon ?? '');
+      const status = m.status ?? '—';
+      const checkinRaw = m.checkin ?? false;
+      const checkin = (checkinRaw === true || checkinRaw === 'true' || checkinRaw === 'Sim') ? true : false;
+
+      // rota display name
+      let rotaNome = '';
+      if (m.rota && typeof m.rota === 'object') rotaNome = m.rota.nome || '';
+      else if (m.rota_id) {
+        const r = rotas.find(x => String(x.id) === String(m.rota_id));
+        rotaNome = r ? r.nome : '';
+      } else if (m.rota) rotaNome = m.rota; // maybe a string
+      else rotaNome = '';
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${telefone}</td>
+        <td>${nome}</td>
+        <td>${cnh}</td>
+        <td>${lat ?? ''}</td>
+        <td>${lon ?? ''}</td>
+        <td><span class="${mapStatusToBadge(status)}">${status}</span></td>
+        <td class="text-center">${ checkin ? '<i class="bi bi-check-circle-fill text-success" title="Check-in"></i>' : '<i class="bi bi-x-circle-fill text-danger" title="Sem check-in"></i>' }</td>
+        <td>${ rotaNome ? `<span class="badge bg-secondary">${rotaNome}</span>` : '-' }</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary me-1" onclick="onEdit(${id})"><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-sm btn-outline-danger" onclick="onDelete(${id})"><i class="bi bi-trash"></i></button>
+        </td>
+      `;
+      tabela.appendChild(row);
+    });
+  }
+
+  /*******************************
+   *  Popula selects e modal     *
+   *******************************/
+  function populateRotaSelect() {
+    const sel = document.getElementById('rotaVinculada');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- Sem vínculo --</option>';
+    rotas.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.id ?? r.ID ?? r.id; // id expected
+      opt.textContent = r.nome ?? r.name ?? `Rota ${r.id}`;
+      sel.appendChild(opt);
+    });
+
+    // also set for modal's rota select (same element used here)
+    const modalSel = document.getElementById('modalUserRota'); // in case other pages use
+    if (modalSel) {
+      modalSel.innerHTML = '<option value=""></option>';
+      rotas.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.id ?? r.ID ?? r.id;
+        opt.textContent = r.nome ?? r.name ?? `Rota ${r.id}`;
+        modalSel.appendChild(opt);
+      });
+    }
+  }
+
+  /*******************************
+   *  Eventos: Add / Edit / Delete
+   *******************************/
+  document.getElementById('btnAddMotorista').addEventListener('click', ()=>{
+    editingId = null;
+    form.reset();
+    form.classList.remove('was-validated');
+    document.getElementById('motoristaId').value = '';
+    document.getElementById('modalMotoristaLabel').textContent = 'Adicionar Motorista';
+    modal.show();
+  });
+
+  // on edit (exposed)
+  window.onEdit = function(id) {
+    const m = motoristas.find(x => String(x.id) === String(id) || String(x.ID) === String(id));
+    if (!m) { showToast('Motorista não encontrado', 'warning'); return; }
+    editingId = id;
+    document.getElementById('motoristaId').value = id;
+    document.getElementById('telefone').value = m.telefone ?? '';
+    document.getElementById('nome').value = m.nome ?? '';
+    document.getElementById('cnh').value = m.cnh ?? '';
+    document.getElementById('latitude').value = m.latitude ?? m.lat ?? '';
+    document.getElementById('longitude').value = m.longitude ?? m.lon ?? '';
+    document.getElementById('status').value = m.status ?? '';
+    document.getElementById('checkin').checked = (m.checkin === true || m.checkin === 'true' || m.checkin === 'Sim');
+    // set rota select (if rota object provided or rota_id)
+    const rotaId = (m.rota && m.rota.id) ? m.rota.id : (m.rota_id ?? m.rota ?? '');
+    document.getElementById('rotaVinculada').value = rotaId ?? '';
+    document.getElementById('modalMotoristaLabel').textContent = 'Editar Motorista';
+    form.classList.remove('was-validated');
+    modal.show();
+  };
+
+  window.onDelete = async function(id) {
+    if (!confirm('Deseja realmente excluir este motorista?')) return;
+    try {
+      await deleteMotoristaAPI(id);
+      showToast('Motorista removido', 'success');
+      await reloadData();
+    } catch (err) {
+      console.error(err);
+      showToast('Falha ao remover motorista', 'danger');
+    }
+  };
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!form.checkValidity()) {
+      form.classList.add('was-validated');
+      return;
+    }
+
+    const payload = {
+      telefone: document.getElementById('telefone').value.trim(),
+      nome: document.getElementById('nome').value.trim(),
+      cnh: document.getElementById('cnh').value.trim() || null,
+      latitude: document.getElementById('latitude').value ? parseFloat(document.getElementById('latitude').value) : null,
+      longitude: document.getElementById('longitude').value ? parseFloat(document.getElementById('longitude').value) : null,
+      status: document.getElementById('status').value,
+      checkin: document.getElementById('checkin').checked,
+      rota_id: document.getElementById('rotaVinculada').value || null
+    };
+
+    try {
+      if (editingId) {
+        await updateMotorista(editingId, payload);
+        showToast('Motorista atualizado', 'success');
+      } else {
+        await createMotorista(payload);
+        showToast('Motorista criado', 'success');
+      }
+      modal.hide();
+      await reloadData();
+    } catch (err) {
+      console.error(err);
+      showToast('Erro ao salvar motorista', 'danger');
+    }
+  });
+
+  /*******************************
+   *  Reload all data            *
+   *******************************/
+  async function reloadData() {
+    await fetchRotas();
+    await fetchMotoristas();
+  }
+
+  /*******************************
+   *  Inicialização              *
+   *******************************/
+  (async function init(){
+    // restaurar tema se salvo e aplicar estilo da tabela
+    const tema = localStorage.getItem('tema');
+    if (tema) document.documentElement.setAttribute('data-bs-theme', tema);
+    applyTableTheme();
+
+    // carregar dados
+    await fetchRotas();
+    await fetchMotoristas();
+  })();
+  </script>
+</body>
+</html>
