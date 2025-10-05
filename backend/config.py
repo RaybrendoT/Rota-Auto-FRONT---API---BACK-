@@ -1,7 +1,8 @@
-# config.py
+import os
 
-SQLALCHEMY_TRACK_MODIFICATIONS = False
-
-# REDE LOCAL, ACESSANDO VIA IP MÁQUINA SERVIDORA.
-#SQLALCHEMY_DATABASE_URI = 'postgresql://postgres:12345@192.168.0.100:5433/n8n'
-
+class Config:
+    SQLALCHEMY_DATABASE_URI = os.getenv(
+        "DATABASE_URL",
+        "postgresql://postgres:12345@postgresdb:5432/n8n"  # mesmo que docker-compose.yml
+    )
+    SQLALCHEMY_TRACK_MODIFICATIONS = False

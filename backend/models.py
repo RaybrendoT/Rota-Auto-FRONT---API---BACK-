@@ -1,5 +1,20 @@
 from datetime import datetime
 from backend.extensions import db
+import re
+
+
+def normalizar_telefone(telefone: str) -> str:
+    """Remove espaços, traços e mantém apenas dígitos."""
+    return re.sub(r"\D", "", telefone)
+
+
+def validar_telefone(telefone: str):
+    """Valida se o telefone tem 11 dígitos (padrão Brasil)."""
+    telefone = normalizar_telefone(telefone)
+    if len(telefone) != 11:
+        raise ValueError("Telefone inválido. O número deve ter 11 dígitos (ex: 11987654321).")
+    return telefone
+
 
 class Usuario(db.Model):
     __tablename__ = 'usuarios'
@@ -10,13 +25,16 @@ class Usuario(db.Model):
     checkin = db.Column(db.Boolean, default=False)
     status = db.Column(db.String(20), default='Normal')
 
-    # Relacionamento com rota
     rota_id = db.Column(db.Integer, db.ForeignKey('rotas.id'), nullable=True)
-    rota = db.relationship("Rota", backref="usuarios")
+    rota = db.relationship("Rota", backref=db.backref("usuarios", lazy=True))
 
     data_atualizacao = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+
+    def __init__(self, telefone, **kwargs):
+        self.telefone = validar_telefone(telefone)
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {
@@ -66,11 +84,15 @@ class Motorista(db.Model):
     checkin = db.Column(db.Boolean, default=False)
 
     rota_id = db.Column(db.Integer, db.ForeignKey('rotas.id'), nullable=True)
-    rota = db.relationship("Rota", backref="motoristas")
+    rota = db.relationship("Rota", backref=db.backref("motoristas", lazy=True))
 
     data_atualizacao = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+
+    def __init__(self, telefone, **kwargs):
+        self.telefone = validar_telefone(telefone)
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {
